@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image Converter – TIFF to JPG, PNG, PDF</title>
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1b1f24;--muted:#667085;--line:#d9dde3;--accent:#2563eb}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1318;--card:#171c23;--text:#e8ebf0;--muted:#98a2b3;--line:#2b323c;--accent:#5b8def}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5}
+main{max-width:860px;margin:0 auto;padding:32px 16px}
+h1{margin:0 0 4px;font-size:1.6rem}
+p.sub{margin:0 0 24px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+section h2{margin:0 0 10px;font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+select,input[type=range]{width:100%}
+select{padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font-size:1rem}
+#drop{margin-top:16px;border:2px dashed var(--line);border-radius:12px;padding:32px 16px;text-align:center;cursor:pointer;background:var(--card)}
+#drop.over{border-color:var(--accent)}
+#drop small{color:var(--muted)}
+.row{display:flex;gap:12px;align-items:center;margin-top:16px;flex-wrap:wrap}
+button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px 18px;font-size:1rem;cursor:pointer}
+button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:default}
+#q{max-width:160px}
+ul{list-style:none;padding:0;margin:16px 0 0}
+li{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+li img{width:48px;height:48px;object-fit:cover;border-radius:6px;background:var(--bg)}
+li .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+li .n small{display:block;color:var(--muted)}
+li a{color:var(--accent);text-decoration:none;font-weight:600}
+.err{color:#d92d20}
+footer{margin-top:32px;color:var(--muted);font-size:.85rem}
+</style>
+</head>
+<body>
+<main>
+<h1>Image Converter</h1>
+<p class="sub">Convert TIFF, JPG, PNG and WebP images. Everything runs in your browser – files are never uploaded.</p>
+
+<div class="grid">
+  <section>
+    <h2>Convert from</h2>
+    <select id="from">
+      <option value="tiff">TIFF (.tif, .tiff)</option>
+      <option value="jpg">JPG (.jpg, .jpeg)</option>
+      <option value="png">PNG (.png)</option>
+      <option value="webp">WebP (.webp)</option>
+    </select>
+  </section>
+  <section>
+    <h2>Convert to</h2>
+    <select id="to">
+      <option value="jpg">JPG</option>
+      <option value="png">PNG</option>
+      <option value="pdf">PDF</option>
+    </select>
+  </section>
+</div>
+
+<div id="drop">
+  <strong>Drop files here or click to choose</strong><br>
+  <small id="hint">Accepted: .tif, .tiff</small>
+  <input type="file" id="file" multiple hidden>
+</div>
+
+<div class="row">
+  <label for="q">Quality: <span id="qv">92</span>%</label>
+  <input type="range" id="q" min="40" max="100" value="92">
+  <button id="go" disabled>Convert</button>
+  <button id="clear" class="ghost">Clear</button>
+</div>
+<p id="count" class="sub" style="margin-top:12px"></p>
+<ul id="out"></ul>
+
+<footer>Multi-page TIFFs: each page becomes its own JPG/PNG, or one page of the PDF.</footer>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const EXT = {tiff:['tif','tiff'], jpg:['jpg','jpeg'], png:['png'], webp:['webp']};
+let files = [];
+
+function refreshHint(){
+  const f = $('from').value;
+  $('hint').textContent = 'Accepted: ' + EXT[f].map(e => '.' + e).join(', ');
+  $('file').accept = EXT[f].map(e => '.' + e).join(',');
+  files = []; update();
+}
+function update(){
+  $('count').textContent = files.length ? files.length + ' file(s) ready' : '';
+  $('go').disabled = !files.length;
+}
+function addFiles(list){
+  const ok = EXT[$('from').value];
+  const bad = [];
+  for (const f of list){
+    const ext = f.name.split('.').pop().toLowerCase();
+    ok.includes(ext) ? files.push(f) : bad.push(f.name);
+  }
+  if (bad.length) alert('Skipped (not ' + $('from').value.toUpperCase() + '): ' + bad.join(', '));
+  update();
+}
+
+$('from').onchange = refreshHint;
+$('q').oninput = () => $('qv').textContent = $('q').value;
+$('drop').onclick = () => $('file').click();
+$('file').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+$('drop').ondragover = e => { e.preventDefault(); $('drop').classList.add('over'); };
+$('drop').ondragleave = () => $('drop').classList.remove('over');
+$('drop').ondrop = e => { e.preventDefault(); $('drop').classList.remove('over'); addFiles(e.dataTransfer.files); };
+$('clear').onclick = () => { files = []; $('out').innerHTML = ''; update(); };
+
+// Decode a file into an array of canvases (one per page)
+async function decode(file){
+  if ($('from').value === 'tiff'){
+    const buf = await file.arrayBuffer();
+    const ifds = UTIF.decode(buf);
+    const pages = [];
+    for (const ifd of ifds){
+      UTIF.decodeImage(buf, ifd);
+      const rgba = UTIF.toRGBA8(ifd);
+      const c = document.createElement('canvas');
+      c.width = ifd.width; c.height = ifd.height;
+      c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba), ifd.width, ifd.height), 0, 0);
+      pages.push(c);
+    }
+    return pages;
+  }
+  const bmp = await createImageBitmap(file);
+  const c = document.createElement('canvas');
+  c.width = bmp.width; c.height = bmp.height;
+  c.getContext('2d').drawImage(bmp, 0, 0);
+  return [c];
+}
+
+// Flatten onto white (needed for JPG / PDF, which have no transparency)
+function flatten(c){
+  const f = document.createElement('canvas');
+  f.width = c.width; f.height = c.height;
+  const x = f.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, f.width, f.height);
+  x.drawImage(c, 0, 0);
+  return f;
+}
+const toBlob = (c, type, q) => new Promise(r => c.toBlob(r, type, q));
+const base = n => n.replace(/\.[^.]+$/, '');
+
+function addResult(blob, name, thumb, note){
+  const url = URL.createObjectURL(blob);
+  const li = document.createElement('li');
+  li.innerHTML = `<img src="${thumb}" alt=""><div class="n">${name}<small>${note}</small></div><a href="${url}" download="${name}">Download</a>`;
+  $('out').appendChild(li);
+}
+
+$('go').onclick = async () => {
+  const to = $('to').value, q = $('q').value / 100;
+  $('go').disabled = true; $('out').innerHTML = '';
+  for (const file of files){
+    try {
+      const pages = await decode(file);
+      const thumb = pages[0].toDataURL('image/jpeg', .5);
+      if (to === 'pdf'){
+        const { jsPDF } = window.jspdf;
+        let pdf;
+        pages.forEach((p, i) => {
+          const c = flatten(p);
+          const o = c.width > c.height ? 'l' : 'p';
+          if (i === 0) pdf = new jsPDF({orientation:o, unit:'px', format:[c.width, c.height], hotfixes:['px_scaling']});
+          else pdf.addPage([c.width, c.height], o);
+          pdf.addImage(c.toDataURL('image/jpeg', q), 'JPEG', 0, 0, c.width, c.height);
+        });
+        addResult(pdf.output('blob'), base(file.name) + '.pdf', thumb, pages.length + ' page(s)');
+      } else {
+        for (let i = 0; i < pages.length; i++){
+          const c = to === 'jpg' ? flatten(pages[i]) : pages[i];
+          const blob = await toBlob(c, to === 'jpg' ? 'image/jpeg' : 'image/png', q);
+          const suffix = pages.length > 1 ? '_p' + (i + 1) : '';
+          addResult(blob, base(file.name) + suffix + '.' + to, c.toDataURL('image/jpeg', .5), c.width + ' × ' + c.height);
+        }
+      }
+    } catch (e){
+      const li = document.createElement('li');
+      li.innerHTML = `<div class="n err">${file.name}<small>Could not convert: ${e.message || e}</small></div>`;
+      $('out').appendChild(li);
+    }
+  }
+  $('go').disabled = false;
+};
+refreshHint();
+</script>
+</body>
+</html>
